@@ -1,0 +1,10 @@
+# 课程代码仓库(独立的 git repo,不发布)
+xv6-labs-2025/
+
+# Jekyll
+_site/
+.jekyll-cache/
+.jekyll-metadata
+.sass-cache/
+vendor/
+Gemfile.lock
