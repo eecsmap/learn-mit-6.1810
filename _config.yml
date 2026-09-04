@@ -3,7 +3,7 @@ description: xv6 / RISC-V 操作系统课程(Fall 2026)自学笔记、环境搭�
 lang: zh-CN
 
 # GitHub Pages 原生支持 remote_theme,无需 CI 构建
-remote_theme: just-the-docs/just-the-docs
+remote_theme: just-the-docs/just-the-docs@v0.12.0
 baseurl: "/learn-mit-6.1810"
 
 plugins:
