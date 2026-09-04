@@ -36,7 +36,8 @@ bundle exec jekyll serve --baseurl ""
 ## 发布到 GitHub Pages
 
 仓库 Settings → Pages → Source 选 **Deploy from a branch**,
-branch `main`,folder `/ (root)`。
+branch `main`,folder `/ (root)`。主题用 `remote_theme`,GitHub Pages 原生构建,
+不需要 GitHub Actions。
 
-> **私有仓库注意:** GitHub Pages 对私有仓库需要 GitHub Pro / Team / Enterprise。
-> 免费账号下私有仓库无法发布 Pages —— 要么把仓库改成 public,要么升级套餐。
+> 如果把仓库改成 private,注意 GitHub Pages 对私有仓库需要
+> GitHub Pro / Team / Enterprise,免费账号下发布选项不可用。
