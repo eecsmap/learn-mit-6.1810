@@ -219,14 +219,228 @@ $ make GRADEFLAGS=sleep grade
 ---
 
 ## Exercise 2 — sixfive
+{: .d-inline-block }
 
-**任务:** 读入文件,把里面所有能被 5 或 6 整除的十进制数打印出来。
+已完成 3/3
+{: .label .label-green }
+
+**任务:** 写 `user/sixfive.c`,把输入文件里所有**能被 5 或 6 整除**的十进制数打印出来。
 数字之间的分隔符是:空格、`-`、`\`、回车、制表符、换行、`.`、`/`、`,`。
 文件的开头和结尾也算隐式分隔符。
 
-提示里点名了 `strchr()` 和「一次处理一个字符」,建议的系统调用是 `open` / `read`。
+### 核心问题:`xv6` 里的那个 `6` 算不算一个数?
 
-**状态:** 未开始
+这题看起来是「读文件 + 取数字 + 判倍数」,但**真正的难点是定义什么叫「一个数」**。
+
+朴素读法是「任何极大的数字串就是一个数」。拿这个规则跑 `README`,会打出十几个
+`6`(来自 `xv6`、`v6`、`6th`…)。但 grader 期望 README 只输出 **5 个数**:
+`6, 6, 1810, 6, 1810`。
+
+把 README 里全部 29 个数字串连同前后字符列出来对照,能逆推出真正的规则:
+
+{: .note }
+> **两个分隔符之间的整个 token 必须「全由数字组成」,才算一个数。**
+
+| 原文片段 | 切出的 token | 判定 |
+|---|---|---|
+| `xv6 is a ...` | `xv6` | 含字母 → ✗ |
+| `Version 6 (v6).` | `6` | 全数字 → ✓ **打印 6** |
+| `6th Edition` | `6th` | 含字母 → ✗ |
+| `1-57398-013-7;` | `1` `57398` `013` `7;` | 前三个是数但都不是 5/6 倍数;`7;` 含 `;` → ✗ |
+| `\n2000)).  See` | `2000))` | 含 `)` → ✗ |
+| `/6.1810/` | `6` `1810` | 都✓ → **打印 6、1810** |
+| `l0stman,` | `l0stman` | ✗ |
+| `MIT's 6.1810, so` | `6` `1810` | 都✓ → **打印 6、1810** |
+
+正好 5 个,完全对上。
+
+{: .gotcha }
+> `)` 和 `;` **不在**分隔符表里(表只有 `空格 - \ CR tab 换行 . / ,`)。
+> 所以 `2000))` 是一个整体 token 而不是「数字 2000 + 两个括号」,整体作废。
+> 这是最容易写错的地方 —— 如果你把「非数字字符」一律当分隔符,README 会多打出
+> `2000`、`800`、`95` 等等一堆。
+
+再用 `sixfive.txt` 验证一遍:
+
+```
+5      → ✓ 打印
+3      → ✗
+127    → ✗
+100    → ✓ 打印
+18-4   → 被 `-` 切成 18(✓ 打印)和 4(✗)
+06     → 值 6 ✓ 打印(注意输出的是 6 不是 06)
+```
+
+{: .gotcha }
+> `sixfive.txt` **最后一行 `06` 后面没有换行符**。如果只在遇到分隔符时才结算,
+> 最后这个 `6` 会被永远吞掉。所以每个文件读完后必须再结算一次 ——
+> 这就是 spec 里「文件开头和结尾是隐式分隔符」那句话的实际含义。
+
+### 思路
+
+照 `user/wc.c` 的骨架(它也是「多文件参数 + 逐字符扫描」):
+
+1. 用三个状态变量描述「当前 token」:
+   - `val` —— 到目前为止的数值
+   - `ndigits` —— 见过几个数字(用来区分「空 token」和「数字 0」)
+   - `isnum` —— 这个 token 到现在为止是否**全**是数字
+2. 逐字符扫:
+   - 是分隔符 → **结算**当前 token,然后重置
+   - 是数字 → `val = val*10 + (c-'0')`,`ndigits++`
+   - 其它字符 → `isnum = 0`(整个 token 作废,但**继续扫**直到下一个分隔符)
+3. 结算条件:`ndigits > 0 && isnum && (val%5==0 || val%6==0)` → `printf("%d\n", val)`
+4. 每个文件读完后**再结算一次**(EOF 隐式分隔符)
+
+<details markdown="block">
+<summary><strong>▶ 展开:完整代码 + 逐行讲解</strong></summary>
+
+```c
+// user/sixfive.c
+#include "kernel/types.h"
+#include "kernel/stat.h"
+#include "kernel/fcntl.h"
+#include "user/user.h"
+
+char buf[512];
+
+// 分隔符: 空格 - \ 回车 制表符 换行 . / ,
+char *seps = " -\\\r\t\n./,";
+
+int val;         // 当前 token 的数值
+int ndigits;     // 当前 token 里的数字个数
+int isnum = 1;   // 当前 token 是否全由数字组成
+
+// 一个 token 结束: 只有「非空且全是数字」才算一个数
+void
+flush(void)
+{
+  if(ndigits > 0 && isnum && (val % 5 == 0 || val % 6 == 0))
+    printf("%d\n", val);
+  val = 0;
+  ndigits = 0;
+  isnum = 1;
+}
+
+void
+sixfive(int fd)
+{
+  int i, n;
+
+  while((n = read(fd, buf, sizeof(buf))) > 0){
+    for(i = 0; i < n; i++){
+      char c = buf[i];
+      if(strchr(seps, c)){
+        flush();
+      } else if(c >= '0' && c <= '9'){
+        val = val * 10 + (c - '0');
+        ndigits++;
+      } else {
+        isnum = 0;   // 非数字非分隔符 -> 整个 token 作废
+      }
+    }
+  }
+  if(n < 0){
+    fprintf(2, "sixfive: read error\n");
+    exit(1);
+  }
+  flush();   // 文件结尾也是隐式分隔符
+}
+
+int
+main(int argc, char *argv[])
+{
+  int fd, i;
+
+  if(argc <= 1){
+    sixfive(0);
+    exit(0);
+  }
+
+  for(i = 1; i < argc; i++){
+    if((fd = open(argv[i], O_RDONLY)) < 0){
+      fprintf(2, "sixfive: cannot open %s\n", argv[i]);
+      exit(1);
+    }
+    sixfive(fd);
+    close(fd);
+  }
+  exit(0);
+}
+```
+
+逐行:
+
+| 代码 | 为什么 |
+|------|--------|
+| `#include "kernel/fcntl.h"` | 为了拿到 `O_RDONLY`。忘了它会报 `O_RDONLY undeclared`。 |
+| `char buf[512];` | 全局缓冲。xv6 用户程序栈只有一页(4KB),大数组放全局(BSS)是惯例 —— `wc.c`/`cat.c` 都这么写。 |
+| `char *seps = " -\\\r\t\n./,";` | C 字符串里 `\\` 是**一个**反斜杠字符。九个分隔符按 spec 顺序排。 |
+| `int isnum = 1;` | 全局变量默认是 0,但第一个 token 开始时必须是 1,所以显式初始化。 |
+| `ndigits > 0` | 区分两种情况:连续两个分隔符之间的**空 token**(不打印),和真的数字 `0`(0 是 5 和 6 的倍数,应该打印)。只看 `val==0` 是分不清的。 |
+| `val % 5 == 0 \|\| val % 6 == 0` | 注意是「或」不是「且」。30 这种两者都满足的只打印一次。 |
+| `while((n = read(fd, buf, sizeof(buf))) > 0)` | 一次读 512 字节再逐字符处理。spec 说「一次处理一个字符」指的是**扫描逻辑**,不是要你一次 `read` 一个字节 —— 那样每个字符都要陷入内核一次。 |
+| `strchr(seps, c)` | 判断 `c` 是不是分隔符。 |
+| `else { isnum = 0; }` | 关键。遇到字母/括号时**不重置 token、不结算**,只是打上「作废」标记,继续往前扫到下一个分隔符。 |
+| `if(n < 0)` | `read` 返回负数是错误。照 `wc.c` 的做法处理。 |
+| `flush()`(函数末尾) | EOF 结算。没有这一行 `sixfive.txt` 的最后一个 `6` 会丢。 |
+| `if(argc <= 1) sixfive(0)` | 没给文件名就读 stdin(fd 0),和 `wc` 一致。grader 不测这个,但这是 UNIX 惯例。 |
+| `flush()` 在每个文件后都会调用 | 顺带保证了**文件边界也是分隔符** —— 跨文件的数字不会被粘在一起。`sixfive sixfive.txt README` 这个测试就在验这个。 |
+
+`Makefile` 的改动:
+
+```diff
+ 	$U/_sh\
++	$U/_sixfive\
+ 	$U/_sleep\
+```
+
+</details>
+
+### 验证
+
+```
+$ sixfive sixfive.txt
+5
+100
+18
+6
+$ sixfive README
+6
+6
+1810
+6
+1810
+```
+
+```console
+$ make GRADEFLAGS=sixfive grade
+== Test sixfive_test == sixfive_test: OK (3.2s)
+== Test sixfive_readme == sixfive_readme: OK (0.7s)
+== Test sixfive_all == sixfive_all: OK (1.1s)
+```
+
+### 踩的坑 / 值得记的点
+
+- **别把「非数字」当分隔符。** 分隔符是一张固定的九字符表,表外的非数字字符
+  (字母、`(`、`)`、`;`、`'`、`:` …)只会让当前 token 作废,不会切断它。
+- **EOF 必须结算。** 测试数据故意让文件不以换行结尾。
+- **`06` 要输出 `6`。** 打印的是解析出来的整数值,不是原始文本。
+- **`ndigits` 不能省。** 用它区分空 token 和数字 0。
+- **xv6 的 `strchr` 和标准 C 不一样:**
+
+  ```c
+  // user/ulib.c
+  char* strchr(const char *s, char c) {
+    for(; *s; s++)          // 注意: 循环条件是 *s,不包括结尾的 '\0'
+      if(*s == c) return (char*)s;
+    return 0;
+  }
+  ```
+
+  ISO C 的 `strchr(s, '\0')` 会返回指向结尾 NUL 的**非空**指针;xv6 这版返回 `0`。
+  这里刚好帮了忙(二进制文件里的 `\0` 不会被误判成分隔符),但换个场景就是个坑。
+- **非 ASCII 字节是安全的。** README 里有 UTF-8(`Matúš`),`char` 有符号时这些字节是负数,
+  既匹配不上分隔符也不是数字 → 走 `isnum = 0` 分支,行为正确。
 
 ---
 
@@ -287,3 +501,4 @@ book ch.1 讲的就是这个。
 ## Run log
 
 - 2026-09-04 — Ex1 `sleep` 完成,3/3 grader 测试通过。
+- 2026-09-11 — Ex2 `sixfive` 完成,3/3 grader 测试通过(累计 6/6)。

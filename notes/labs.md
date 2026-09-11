@@ -32,7 +32,7 @@ make GRADEFLAGS=sleep grade     # 只跑名字里带 sleep 的测试
 
 | Lab | 状态 |
 |-----|------|
-| [util]({{ site.baseurl }}/labs/util/) | 进行中 — Ex1 `sleep` ✅ |
+| [util]({{ site.baseurl }}/labs/util/) | 进行中 — Ex1 `sleep` ✅ · Ex2 `sixfive` ✅ |
 | syscall | 未开始 |
 | pgtbl | 未开始 |
 | traps | 未开始 |

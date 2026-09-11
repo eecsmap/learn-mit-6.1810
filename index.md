@@ -42,7 +42,7 @@ permalink: /
 
 - [x] 环境搭建并验证(QEMU 10.2.1 · gcc-riscv64 15.2 · gdb-multiarch 17.1)
 - [x] Lab util — Exercise 1: `sleep`
-- [ ] Lab util — Exercise 2: `sixfive`
+- [x] Lab util — Exercise 2: `sixfive`
 - [ ] Lab util — Exercise 3: `memdump`
 - [ ] Lab util — Exercise 4~5: `find` / `find -exec`
 
